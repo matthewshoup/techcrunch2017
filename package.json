@@ -1,0 +1,22 @@
+{
+  "name": "tc17_emotion",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "async": "^2.5.0",
+    "aws-sdk": "^2.117.0",
+    "boom": "^5.2.0",
+    "fs": "0.0.1-security",
+    "hapi": "^16.6.0",
+    "http": "0.0.0",
+    "https": "^1.0.0",
+    "inert": "^4.2.1",
+    "path": "^0.12.7"
+  }
+}
