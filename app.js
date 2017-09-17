@@ -9,8 +9,21 @@ var async = require('async');
 // Create a server with a host and port
 const server = new Hapi.Server();
 server.connection({ 
-    port: 8001
+    port: 80,
+routes: {
+            cors: true
+        }
 });
+
+
+var fs = require('fs');
+
+var tls = {
+  key: fs.readFileSync('./key.pem'),
+  cert: fs.readFileSync('./cert.pem')
+};
+
+server.connection({address: '0.0.0.0', port: 443, tls: tls, routes: {cors: true}});
 
 
 
@@ -52,7 +65,7 @@ server.register(require('inert'), (err) => {
 		    binaryData = new Buffer(base64Data, 'base64').toString('binary');
 
 			console.log(base64Data);
-			var newFilename = "www/images/out_"+new Date().getTime()+".png";
+			var newFilename = "images/out_"+new Date().getTime()+".png";
 		  require("fs").writeFile(newFilename, binaryData, "binary", function(err) {
 		    console.log(err); // writes out file without error, but it's not a valid image
 		    reply("{'url':'http://104.236.169.147/"+newFilename+"'}");
@@ -70,7 +83,7 @@ server.register(require('inert'), (err) => {
             throw err;
         }
 
-        console.log('Server running at:', server.info.uri);
+//        console.log('Server running at:', server.info.uri);
     });
 });
 

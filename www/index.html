@@ -1,0 +1,687 @@
+<!doctype html>
+<html>
+<head>
+        <meta charset="utf-8">
+        <title>tracking.js - face alignment with camera</title>
+        <!-- here is the frame around each example - to be removed - to a fullscreen video - working on mobile too -->
+        <!-- <link rel="stylesheet" href="assets/demo.css"> -->
+        
+        <script src="/build/tracking.js"></script>
+        <script src="/build/data/face-min.js"></script>
+        <script src="/src/alignment/training/Landmarks.js"></script>
+        <script src="/src/alignment/training/Regressor.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jcanvas/20.1.2/jcanvas.js"></script>
+		<script src="https://download.affectiva.com/js/3.2/affdex.js"/></script>
+        <script src="/js/jquery-2.1.4.js"></script>
+        <script src="./dat.min.js"></script>
+</head>
+<body>
+        <style>
+                #localVideo {
+                        position: absolute;
+                        top: 0px;
+                        left: 0px;
+                        width : 320px;
+                        height: auto;
+                        zoom: 3;
+                }
+                #canvasDetection {
+                        position: absolute;
+                        top: 0px;
+                        left: 0px;
+                        width : 320px;
+                        height: auto;
+                        zoom: 3;
+						-moz-transform: scale(-1, 1);
+						-webkit-transform: scale(-1, 1);
+						-o-transform: scale(-1, 1);
+						transform: scale(-1, 1);
+						filter: FlipH;
+                }
+        </style>
+		
+		<div class="videoContainer">
+		            <video id="localVideo" oncontextmenu="return false;"></video>
+		           
+		        </div>
+		        <div id="localScreenContainer" class="videoContainer">
+		        </div>
+		        <div id="remotes"></div>
+		        <canvas id="canvasDetection"></canvas>
+		
+				<br/><br/>
+						<div id="thumbs" style="display:none"></thumbs>
+						
+		        
+		        <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
+		        <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+		        <script src="/js/simplewebrtc.js"></script>
+		        <script>
+		            // grab the room from the URL
+		            var room = location.search && location.search.split('?')[1];
+
+		            // create our webrtc connection
+		            var webrtc = new SimpleWebRTC({
+		                // the id/element dom element that will hold "our" video
+		                localVideoEl: 'localVideo',
+		                // the id/element dom element that will hold remote videos
+		                remoteVideosEl: '',
+		                // immediately ask for camera access
+		                autoRequestMedia: true,
+		                debug: false,
+		                detectSpeakingEvents: true,
+		                autoAdjustMic: false
+		            });
+
+		            // when it's ready, join if we got a room from the URL
+		            webrtc.on('readyToCall', function () {
+		                // you can name it anything
+		                if (room) webrtc.joinRoom(room);
+		            });
+
+		            function showVolume(el, volume) {
+		                if (!el) return;
+		                if (volume < -45) volume = -45; // -45 to -20 is
+		                if (volume > -20) volume = -20; // a good range
+		                el.value = volume;
+		            }
+
+		            // we got access to the camera
+		            webrtc.on('localStream', function (stream) {
+		                var button = document.querySelector('form>button');
+		                if (button) button.removeAttribute('disabled');
+		                $('#localVolume').show();
+		            });
+		            // we did not get access to the camera
+		            webrtc.on('localMediaError', function (err) {
+		            });
+
+		            // local screen obtained
+		            webrtc.on('localScreenAdded', function (video) {
+		                video.onclick = function () {
+		                    video.style.width = video.videoWidth + 'px';
+		                    video.style.height = video.videoHeight + 'px';
+		                };
+		                document.getElementById('localScreenContainer').appendChild(video);
+		                $('#localScreenContainer').show();
+		            });
+		            // local screen removed
+		            webrtc.on('localScreenRemoved', function (video) {
+		                document.getElementById('localScreenContainer').removeChild(video);
+		                $('#localScreenContainer').hide();
+		            });
+
+		            // a peer video has been added
+		            webrtc.on('videoAdded', function (video, peer) {
+		                console.log('video added', peer);
+		                var remotes = document.getElementById('remotes');
+		                if (remotes) {
+		                    var container = document.createElement('div');
+		                    container.className = 'videoContainer';
+		                    container.id = 'container_' + webrtc.getDomId(peer);
+		                    container.appendChild(video);
+
+		                    // suppress contextmenu
+		                    video.oncontextmenu = function () { return false; };
+
+		                    // resize the video on click
+		                    video.onclick = function () {
+		                        container.style.width = video.videoWidth + 'px';
+		                        container.style.height = video.videoHeight + 'px';
+		                    };
+
+		                    // show the remote volume
+		                    var vol = document.createElement('meter');
+		                    vol.id = 'volume_' + peer.id;
+		                    vol.className = 'volume';
+		                    vol.min = -45;
+		                    vol.max = -20;
+		                    vol.low = -40;
+		                    vol.high = -25;
+		                    container.appendChild(vol);
+
+		                    // show the ice connection state
+		                    if (peer && peer.pc) {
+		                        var connstate = document.createElement('div');
+		                        connstate.className = 'connectionstate';
+		                        container.appendChild(connstate);
+		                        peer.pc.on('iceConnectionStateChange', function (event) {
+		                            switch (peer.pc.iceConnectionState) {
+		                            case 'checking':
+		                                connstate.innerText = 'Connecting to peer...';
+		                                break;
+		                            case 'connected':
+		                            case 'completed': // on caller side
+		                                $(vol).show();
+		                                connstate.innerText = 'Connection established.';
+		                                break;
+		                            case 'disconnected':
+		                                connstate.innerText = 'Disconnected.';
+		                                break;
+		                            case 'failed':
+		                                connstate.innerText = 'Connection failed.';
+		                                break;
+		                            case 'closed':
+		                                connstate.innerText = 'Connection closed.';
+		                                break;
+		                            }
+		                        });
+		                    }
+		                    remotes.appendChild(container);
+		                }
+		            });
+		            // a peer was removed
+		            webrtc.on('videoRemoved', function (video, peer) {
+		                console.log('video removed ', peer);
+		                var remotes = document.getElementById('remotes');
+		                var el = document.getElementById(peer ? 'container_' + webrtc.getDomId(peer) : 'localScreenContainer');
+		                if (remotes && el) {
+		                    remotes.removeChild(el);
+		                }
+		            });
+
+		            // local volume has changed
+		            webrtc.on('volumeChange', function (volume, treshold) {
+		                showVolume(document.getElementById('localVolume'), volume);
+		            });
+		            // remote volume has changed
+		            webrtc.on('remoteVolumeChange', function (peer, volume) {
+		                showVolume(document.getElementById('volume_' + peer.id), volume);
+		            });
+
+		            // local p2p/ice failure
+		            webrtc.on('iceFailed', function (peer) {
+		                var connstate = document.querySelector('#container_' + webrtc.getDomId(peer) + ' .connectionstate');
+		                console.log('local fail', connstate);
+		                if (connstate) {
+		                    connstate.innerText = 'Connection failed.';
+		                    fileinput.disabled = 'disabled';
+		                }
+		            });
+
+		            // remote p2p/ice failure
+		            webrtc.on('connectivityError', function (peer) {
+		                var connstate = document.querySelector('#container_' + webrtc.getDomId(peer) + ' .connectionstate');
+		                console.log('remote fail', connstate);
+		                if (connstate) {
+		                    connstate.innerText = 'Connection failed.';
+		                    fileinput.disabled = 'disabled';
+		                }
+		            });
+
+		            // Since we use this twice we put it here
+		            function setRoom(name) {
+		                document.querySelector('form').remove();
+		                document.getElementById('title').innerText = 'Room: ' + name;
+		                document.getElementById('subTitle').innerText =  'Link to join: ' + location.href;
+		                $('body').addClass('active');
+		            }
+
+		            if (room) {
+		                setRoom(room);
+		            } else {
+		                $('form').submit(function () {
+		                    var val = $('#sessionInput').val().toLowerCase().replace(/\s/g, '-').replace(/[^A-Za-z0-9_\-]/g, '');
+		                    webrtc.createRoom(val, function (err, name) {
+		                        console.log(' create room cb', arguments);
+
+		                        var newUrl = location.pathname + '?' + name;
+		                        if (!err) {
+		                            history.replaceState({foo: 'bar'}, null, newUrl);
+		                            setRoom(name);
+		                        } else {
+		                            console.log(err);
+		                        }
+		                    });
+		                    return false;
+		                });
+		            }
+
+		            var button = document.getElementById('screenShareButton'),
+		                setButton = function (bool) {
+		                    button.innerText = bool ? 'share screen' : 'stop sharing';
+		                };
+		            if (!webrtc.capabilities.supportScreenSharing) {
+		                button.disabled = 'disabled';
+		            }
+		            webrtc.on('localScreenRemoved', function () {
+		                setButton(true);
+		            });
+
+		            setButton(true);
+
+		            button.onclick = function () {
+		                if (webrtc.getLocalScreen()) {
+		                    webrtc.stopScreenShare();
+		                    setButton(true);
+		                } else {
+		                    webrtc.shareScreen(function (err) {
+		                        if (err) {
+		                            setButton(true);
+		                        } else {
+		                            setButton(false);
+		                        }
+		                    });
+
+		                }
+		            };
+		        </script>
+					
+					
+	
+     
+					
+
+<script>
+	
+	
+	
+
+
+
+
+	function getEmotion(img) {
+	/* 
+
+	Personalize user experiences with emotion recognition
+
+	30,000 transactions, 20 per minute.
+
+	Endpoint: https://westus.api.cognitive.microsoft.com/emotion/v1.0
+
+	Key 1: eded9622553c42ed935cc323b3a72a88
+
+	Key 2: 9e9c8e0ba3bb4e84b3a4d32304dcd64d
+
+	*/
+	
+		if (!img) {
+			img= "https://pbs.twimg.com/profile_images/690288772907335680/y2dgoxQ9_400x400.jpg";
+		}
+	        $.ajax({
+	            // NOTE: You must use the same location in your REST call as you used to obtain your subscription keys.
+	            //   For example, if you obtained your subscription keys from westcentralus, replace "westus" in the 
+	            //   URL below with "westcentralus".
+	            url: "https://westus.api.cognitive.microsoft.com/emotion/v1.0/recognize?",
+	            beforeSend: function(xhrObj){
+	                // Request headers
+	                xhrObj.setRequestHeader("Content-Type","application/json");
+
+	                // NOTE: Replace the "Ocp-Apim-Subscription-Key" value with a valid subscription key.
+	                xhrObj.setRequestHeader("Ocp-Apim-Subscription-Key","eded9622553c42ed935cc323b3a72a88");
+	            },
+	            type: "POST",
+	            // Request body
+	            data: '{"url":"'+img+'"}'
+	        })
+	        .done(function(data) {
+            	
+				console.log(data);
+	        })
+	        .fail(function(error) {
+
+				alert(JSON.stringify(error));
+	        });
+		
+	}
+	
+	$(document).ready(function() {
+	var counter = 0;
+	
+        var canvasDetection = document.querySelector('#canvasDetection');
+        canvasDetection.width = 320
+        canvasDetection.height = 240
+        var context = canvasDetection.getContext('2d');
+
+        // tracking.LBF.maxNumStages = 10
+        var tracker = new tracking.LandmarksTracker();
+        tracker.setEdgesDensity(0.1);
+        tracker.setInitialScale(4);
+        tracker.setStepSize(2);
+
+        tracker.setInitialScale(2);
+        tracker.setStepSize(1);
+
+        
+        var gui = new dat.GUI();
+        gui.add(tracker, 'edgesDensity', 0.1, 0.5).step(0.01).listen();
+        gui.add(tracker, 'initialScale', 1.0, 10.0).step(0.1).listen();
+        gui.add(tracker, 'stepSize', 0.5, 5).step(0.1).listen();
+        
+
+        var videoElement = document.querySelector('#localVideo')
+        tracking.track(videoElement, tracker);
+        // tracking.track(videoElement, tracker, { camera: true });
+        
+        var landmarksPerFace = 30
+        var landmarkFeatures = {
+                jaw : {
+                        first: 0,
+                        last: 8,
+                        fillStyle: 'white',
+                        closed: false,
+                },
+                nose : {
+                        first:15,
+                        last: 18,
+                        fillStyle: 'green',
+                        closed: true,
+                },
+                mouth : {
+                        first:27,
+                        last: 30,
+                        fillStyle: 'red',
+                        closed: true,
+                },
+                eyeL : {
+                        first:19,
+                        last: 22,
+                        fillStyle: 'purple',
+                        closed: false,
+                },
+                eyeR : {
+                        first:23,
+                        last: 26,
+                        fillStyle: 'purple',
+                        closed: false,
+                },
+                eyeBrowL : {
+                        first: 9,
+                        last: 11,
+                        fillStyle: 'yellow',
+                        closed: false,
+                },
+                eyeBrowR : {
+                        first:12,
+                        last: 14,
+                        fillStyle: 'yellow',
+                        closed: false,
+                },
+        }
+
+        //////////////////////////////////////////////////////////////////////////////
+        //                Code Separator
+        //////////////////////////////////////////////////////////////////////////////
+        var parameters = {
+                landmarkLerpFactor : 0.7,
+                boundinBoxVisible : true,
+                jawVisible : true,
+                eyeBrowLVisible : true,
+                eyeBrowRVisible : true,
+                noseVisible : true,
+                eyeLVisible : true,
+                eyeRVisible : true,
+                mouthVisible : true,
+        }
+        gui.add(parameters, 'landmarkLerpFactor', 0.0, 1).listen().name('Landmarks Lerp');
+        gui.add(parameters, 'boundinBoxVisible', 0.0, 1).listen().name('bounding box');
+        Object.keys(landmarkFeatures).forEach(function(featureLabel){
+                gui.add(parameters, featureLabel + 'Visible').listen().name(featureLabel);
+        })
+
+        var lerpedFacesLandmarks = []
+        
+        tracker.on('track', function(event) {
+                // clear debug canvasDetection
+                context.clearRect(0,0,canvasDetection.width, canvasDetection.height);
+
+                if( event.data === undefined ) return;
+                
+                event.data.faces.forEach(function(boundingBox, faceIndex) {
+                        var faceLandmarks = event.data.landmarks[faceIndex]
+
+                        if( parameters.boundinBoxVisible === true ) displayFaceLandmarksBoundingBox(boundingBox, faceIndex)
+
+                        // lerpFacesLandmarks
+                        lerpFacesLandmarks(faceLandmarks)
+                        
+                        // display each faceLandmarks
+                        displayFaceLandmarksDot(lerpedFacesLandmarks)
+                });
+        })
+
+        function lerpFacesLandmarks(newFaceLandmarks){
+                // init lerpFacesLandmarks if needed
+                for(var i = 0; i < newFaceLandmarks.length; i++){
+                        if( lerpedFacesLandmarks[i] !== undefined ) continue
+                        lerpedFacesLandmarks[i] = [
+                                newFaceLandmarks[i][0],
+                                newFaceLandmarks[i][1],
+                        ]                        
+                }
+
+                // init lerpFacesLandmarks if needed
+                for(var i = 0; i < newFaceLandmarks.length; i++){
+                        var lerpFactor = parameters.landmarkLerpFactor
+                        lerpedFacesLandmarks[i][0] = newFaceLandmarks[i][0] * lerpFactor  + lerpedFacesLandmarks[i][0] * (1-lerpFactor)
+                        lerpedFacesLandmarks[i][1] = newFaceLandmarks[i][1] * lerpFactor  + lerpedFacesLandmarks[i][1] * (1-lerpFactor)
+                }
+        }
+
+
+
+        //////////////////////////////////////////////////////////////////////////////
+        //                Code Separator
+        //////////////////////////////////////////////////////////////////////////////
+        function displayFaceLandmarksBoundingBox(boundingBox, faceIndex){
+                // display the box
+                context.strokeStyle = '#a64ceb';
+                context.strokeRect(boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height);
+
+                // display the size of the box
+                context.font = '11px Helvetica';
+                context.fillStyle = "#fff";
+                context.fillText('idx: '+faceIndex, boundingBox.x + boundingBox.width + 5, boundingBox.y + 11);
+                context.fillText('x: ' + boundingBox.x + 'px', boundingBox.x + boundingBox.width + 5, boundingBox.y + 22);
+                context.fillText('y: ' + boundingBox.y + 'px', boundingBox.x + boundingBox.width + 5, boundingBox.y + 33);
+
+				if (counter % 100 == 1) {
+					
+ 
+					    var video, $output;
+					    var scale = 1;
+ 
+					        video = $("#localVideo").get(0);               
+					        var canvas = document.createElement("canvas");
+					        canvas.width = video.videoWidth * scale;
+					        canvas.height = video.videoHeight * scale;
+					        canvas.getContext('2d')
+					              .drawImage(video, 0, 0, canvas.width, canvas.height);
+ 
+					        var img = new Image();
+							img.id="thumb_"+counter;
+					        img.src = canvas.toDataURL();
+							//console.log(img.src);
+					        $("#thumbs").prepend(img);
+							//getEmotion(img.src)
+//							img.onload = imageLoaded();
+							//console.log("LOADED!");
+//							imageLoaded(img);
+
+payload ={"img":img.src};
+	$.ajax({
+           type: "POST",
+           url: "https://104.236.169.147/upload/",
+	   data: payload,
+           success: function (msg, text, err) {
+			   console.log(msg);
+			   console.log(text);
+			   console.log(err);
+               if (msg) {
+				   console.log(msg.url);  
+ 
+				   getEmotion(msg.url);
+				} else {
+               }
+           },
+
+  
+       });
+					  
+ 
+					
+
+				
+				}
+				counter = counter +1;
+        }
+        
+        function displayFaceLandmarksDot(faceLandmarks){
+                Object.keys(landmarkFeatures).forEach(function(featureLabel){
+                        if( parameters[featureLabel+'Visible'] === false )      return
+                        displayFaceLandmarksFeature(faceLandmarks, featureLabel)
+                })
+        }
+        function displayFaceLandmarksFeature(faceLandmarks, featureLabel){
+                var feature = landmarkFeatures[featureLabel]
+                
+                // draw dots
+                context.fillStyle = feature.fillStyle
+                for(var i = feature.first; i <= feature.last; i++){
+                        var xy = faceLandmarks[i]
+                        context.beginPath();
+                        context.arc(xy[0],xy[1],1,0,2*Math.PI);
+                        context.fill();                                
+                }                
+                
+                // draw lines
+                var feature = landmarkFeatures[featureLabel]
+                context.strokeStyle = feature.fillStyle
+                context.beginPath();
+                for(var i = feature.first; i <= feature.last; i++){
+                        var x = faceLandmarks[i][0]
+                        var y = faceLandmarks[i][1]
+                        if( i === 0 ){
+                                context.moveTo(x, y)
+                        }else{
+                                context.lineTo(x, y)
+                        }
+                }                
+                if( feature.closed === true ){
+                        var x = faceLandmarks[feature.first][0]
+                        var y = faceLandmarks[feature.first][1]
+                        context.lineTo(x, y)
+                }
+
+                context.stroke();
+
+        }
+		
+		});
+		
+		
+
+		//Construct a PhotoDetector
+		var detector = new affdex.PhotoDetector();
+
+		//Enable detection of all Expressions, Emotions and Emojis classifiers.
+		detector.detectAllEmotions();
+		detector.detectAllExpressions();
+		detector.detectAllEmojis();
+		detector.detectAllAppearance();
+
+		//Add a callback to notify when the detector is initialized and ready for runing.
+		detector.addEventListener("onInitializeSuccess", function() {
+		  //console.log('#logs', "The detector reports initialized");
+
+		  $("#upload_button").css("visibility", "visible");
+		});
+
+		//Add a callback to receive the results from processing an image.
+		//The faces object contains the list of the faces detected in an image.
+		//Faces object contains probabilities for all the different expressions, emotions and appearance metrics
+		detector.addEventListener("onImageResultsSuccess", function(faces, image, timestamp) {
+			//console.log(faces);
+			//console.log(image);
+			//console.log(timestamp);
+		});
+
+		
+		//Add a callback to notify if failed receive the results from processing an image.
+		detector.addEventListener("onImageResultsFailure", function(image, timestamp, error) {
+		  console.log('#logs', 'Failed to process image err=' + error);
+		});
+
+		log("#logs", "Starting the detector .. please wait");
+		//detector.start();
+
+
+		//Once the image is loaded, pass it down for processing
+		function imageLoaded(event) {
+			console.log("loaded");
+		  var contxt = document.createElement('canvas').getContext('2d');
+		  contxt.canvas.width = this.width;
+		  contxt.canvas.height = this.height;
+		  contxt.drawImage(this, 0, 0, this.width, this.height);
+
+		  // Pass the image to the detector to track emotions
+		  if (detector && detector.isRunning) {
+		    detector.process(contxt.getImageData(0, 0, this.width, this.height), 0);
+		  }
+		}
+
+		//Load the selected image
+		function loadFile(event) {
+		  $('#results').html("");
+		  var img = new Image();
+		  var reader = new FileReader();
+		  reader.onload = function() {
+		    img.onload = imageLoaded;
+		    img.src = reader.result;
+		  };
+		  reader.readAsDataURL(event.target.files[0]);
+		};
+
+		//Convienence function for logging to the DOM
+		function log(node_name, msg) {
+		  $(node_name).append("<span>" + msg + "</span><br />")
+		}
+
+		//Draw Image to container
+		function drawImage(img) {
+		  var contxt = $('#image_canvas')[0].getContext('2d');
+
+		  var temp = document.createElement('canvas').getContext('2d');
+		  temp.canvas.width = img.width;
+		  temp.canvas.height = img.height;
+		  temp.putImageData(img, 0, 0);
+
+		  var image = new Image();
+		  image.src = temp.canvas.toDataURL("image/png");
+
+		  //Scale the image to 640x480 - the size of the display container.
+		  contxt.canvas.width = img.width <= 640 ? img.width : 640;
+		  contxt.canvas.height = img.height <= 480 ? img.height : 480;
+
+		  var hRatio = contxt.canvas.width / img.width;
+		  var vRatio = contxt.canvas.height / img.height;
+		  var ratio = Math.min(hRatio, vRatio);
+
+		  //Draw the image on the display canvas
+		  contxt.clearRect(0, 0, contxt.canvas.width, contxt.canvas.height);
+
+		  contxt.scale(ratio, ratio);
+		  contxt.drawImage(image, 0, 0);
+		}
+
+	//Draw the detected facial feature points on the image
+	function drawFeaturePoints(img, featurePoints) {
+	  var contxt = $('#image_canvas')[0].getContext('2d');
+
+	  var hRatio = contxt.canvas.width / img.width;
+	  var vRatio = contxt.canvas.height / img.height;
+	  var ratio = Math.min(hRatio, vRatio);
+
+	  contxt.strokeStyle = "#FFFFFF";
+	  for (var id in featurePoints) {
+	    contxt.beginPath();
+	    contxt.arc(featurePoints[id].x,
+	      featurePoints[id].y, 2, 0, 2 * Math.PI);
+	    contxt.stroke();
+
+	  }
+	}
+
+	  
+</script></body>
+
